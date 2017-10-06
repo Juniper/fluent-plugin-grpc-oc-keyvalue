@@ -1,7 +1,13 @@
+#
+# Copyright (c) 2017 Juniper Networks, Inc. All rights reserved.
+#
+
+
 #require 'fluent/plugin/input'
 require 'grpc'
 #require 'multi_json'
 require 'oc_services_pb'
+require 'authentication_service_services_pb'
 require 'json'
 require 'socket'
 
@@ -10,28 +16,25 @@ module Fluent
         # Register Plugin
         Fluent::Plugin.register_input('juniper_openconfig', self)
 
-        config_param :hosts, :array_param, :array, value_type: :string
-        config_param :port, :integer, default: 32767
+        config_param :server, :array_param, :array, value_type: :string
         config_param :sensors, :array_param, :array, value_type: :string
         config_param :tag, :string, default: ''
-        config_param :cert_file, :string, default: ''
+        config_param :certFile, :string, default: ''
+        config_param :username, :string, default: nil
+        config_param :password, :string, default: ''
+        config_param :sampleFrequency, :integer, default: 1000
 
         def configure(conf)
             super
             
             # Check if atleast one host is provided
-            if @hosts.length == 0
-                raise Fluent::ConfigError, "Atleast one host needs to be provided"
-            end
-            # Check that the port provided is not one of well known ports
-            if @port < 1024
-              raise Fluent::ConfigError, "well known ports cannot be used for this purpose."
+            if @server.length == 0
+                raise Fluent::ConfigError, "Atleast one server needs to be provided"
             end
             # Check if atleast one sensor is provided
             if @sensors.length == 0
                 raise Fluent::ConfigError, "Atleast one sensor needs to be provided"
             end
-
             if not @tag == ''
                 @tag = @tag + '.'
             end
@@ -40,28 +43,97 @@ module Fluent
 
         def start
             super
-            
-            # Create a separate thread per host and per sensor
+
+            # Create a separate thread per host
             threads = []
-            @hosts.each do |host|
-                if @cert_file == ''
-                    stub, err = Telemetry::OpenConfigTelemetry::Stub.new(host + ':' + port.to_s, :this_channel_is_insecure)
-                else
-                    creds = GRPC::Core::ChannelCredentials.new(File.read(@cert_file))
-                    stub, err = Telemetry::OpenConfigTelemetry::Stub.new(host + ':' + port.to_s, creds)
-                end                
-                @sensors.each do |sensor|
-                    #start_collection(server, port, sensor)
-                    threads.push(Thread.new{start_collection(stub, host, @port, sensor, @tag)})
-                end
-            end
-            threads.each do |thread|
-                thread.join
+
+            @server.each do |host|
+                threads.push(Thread.new{start_host_threads(host)})
             end
         end
 
-        def start_collection(stub, host, port, sensor, tag)
-            tag = tag + '.' + sensor
+        def start_host_threads(host)
+            while true do
+                begin
+                    log.debug "#{host}"
+                    if @certFile != ''
+                        log.debug "Using certificates to login for device #{host}"
+                        creds = GRPC::Core::ChannelCredentials.new(File.read(@certFile))
+                        stub = Telemetry::OpenConfigTelemetry::Stub.new(host, creds)
+                    elsif @username != nil
+                        log.debug "Using Password authentication for device #{host}"
+                        
+                        # Create channel
+                        channel = GRPC::Core::Channel.new(host, {}, :this_channel_is_insecure)
+
+                        # Authenticate the Channle
+                        auth_stub, err = Authentication::Login::Stub.new(host, :this_channel_is_insecure, {channel_override: channel})
+                        login_req = Authentication::LoginRequest.new(user_name: @username, password: @password, client_id: Socket.gethostname)
+                        resp, _ = auth_stub.login_check(login_req)
+                        if not resp.result
+                            log.error "Password Authentication failed for #{host}. Will retry in 10 seconds"
+                            sleep(10)
+                            next
+                        end
+
+                        # Use the channel in OpenConfigTelemetry
+                        stub, err = Telemetry::OpenConfigTelemetry::Stub.new(host, :this_channel_is_insecure, {channel_override: channel})
+                    else
+                        log.debug "Using no authentication for device #{host}"
+                        stub = Telemetry::OpenConfigTelemetry::Stub.new(host, :this_channel_is_insecure)
+                    end
+                rescue Exception => e
+                    log.error e.message
+                    sleep(10)
+                    next
+                end
+
+                threads = []
+                host_name, host_port = host.split(':')
+                begin
+                    @sensors.each do |sensor|
+                        frequency = @sampleFrequency
+                        sensor_split = sensor.split(' ')
+
+                        # If only one sensor is defined with no measurement name and sample frequency
+                        measurement_name = sensor_split[0]
+                        
+                        # If there are multiple atrributes in the sensor
+                        if sensor_split.length > 1
+                            measurement_name = nil
+                            # Check if first element is an integer and if it is an integer consider it as sample frequency
+                            if sensor_split[0].to_i.to_s == sensor_split[0]
+                                frequency = sensor_split[0].to_i
+                                sensor_split = sensor_split[1, sensor_split.length]
+                            end
+                            # Check if the first element(second element in actual list) starts with '/', if it starts with '/' then 
+                            # measurement name is not defined, else it becomes the measurement name and the rest are sensors
+                            if not sensor_split[0].start_with?('/')
+                                measurement_name = sensor_split[0]
+                                sensor_split = sensor_split[1, sensor_split.length]
+                            end
+                        end
+                        sensor_split.each do |sensor_name|
+                            if measurement_name == nil
+                                threads.push(Thread.new{start_collection(stub, host_name, host_port, sensor_name, sensor_name, @tag, frequency)})
+                            else
+                                threads.push(Thread.new{start_collection(stub, host_name, host_port, measurement_name, sensor_name, @tag, frequency)})
+                            end
+                        end
+                    end
+                    threads.each do |thread|
+                        thread.join
+                    end
+                rescue Exception => e
+                    log.error e.message
+                    sleep(10)
+                    next
+                end
+            end            
+        end
+        
+        def start_collection(stub, host, port, measurement_name, sensor, tag, frequency)
+            tag = tag + measurement_name
             req = ''
             resp = ''
             count = ENV['MOCHA_COUNT']
@@ -80,25 +152,29 @@ module Fluent
                     log.debug "Subsribing to #{sensor} with host #{host} on port #{port}"
                 
                     # Create a Path (Sensor) list that needs to be subscribed
-                    path_list = [Telemetry::Path.new(path: sensor, sample_frequency: 1000)]
+                    path_list = [Telemetry::Path.new(path: sensor, sample_frequency: frequency)]
                     # Create Subscription request
                     begin
                         req = Telemetry::SubscriptionRequest.new(path_list: path_list)
                     rescue Exception => e
                         log.error e.message
                         log.error e.backtrace.inspect
+                        sleep(10)
                         next
                     end
                     # Subscribe using the subscription request
                     resp = ''
                     begin
+                        log.debug "Sending subscription request for #{sensor} to host #{host} on port #{port}"
+                        log.debug "Data from this subscription will be stored in #{tag}"
                         resp = stub.telemetry_subscribe(req)
                     rescue Exception => e
                         log.error e.message
                         log.error e.backtrace.inspect
+                        sleep(10)
                         next
                     end
-                    
+                    log.debug "Subscription done"
                     value_map = {
                         'uint_value': 'uintValue', 
                         'double_value': 'doubleValue', 
@@ -147,6 +223,7 @@ module Fluent
                 rescue Exception => e
                     log.error e.message
                     log.error e.backtrace.inspect
+                    sleep(10)
                     next
                 end
             end

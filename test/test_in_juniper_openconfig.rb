@@ -6,7 +6,7 @@ require 'mocha/test_unit'
 require 'fluent/test'
 
 # your own plugin
-require 'in_juniper_openconfig'
+require 'fluent/plugin/in_juniper_openconfig'
 
 class OCInputTest < Test::Unit::TestCase
     def setup
@@ -15,7 +15,7 @@ class OCInputTest < Test::Unit::TestCase
 
     # default configuration for tests
      CONFIG = %Q(
-        hosts ["asd"]
+        server ["asd"]
         sensors ["asdasd"]
     )
 
@@ -31,7 +31,7 @@ class OCInputTest < Test::Unit::TestCase
             #d = create_driver
             assert_raise Fluent::ConfigError do
                 create_driver(%[
-                    hosts []
+                    servers []
                 ])
             end
         end
@@ -46,17 +46,13 @@ class OCInputTest < Test::Unit::TestCase
     end
 
     sub_test_case 'Checking optional default values' do
-        test 'port default value is set to 32767' do
-            d = create_driver
-            assert_equal 32767, d.instance.port
-        end
         test 'tag default value is set to empty string' do
             d = create_driver
             assert_equal "", d.instance.tag
         end
         test 'cert_file default value is set to empty string' do
             d = create_driver
-            assert_equal "", d.instance.cert_file
+            assert_equal "", d.instance.certFile
         end
     end
 
@@ -117,7 +113,7 @@ class OCInputTest < Test::Unit::TestCase
     sub_test_case 'Start Collection' do
         test 'Start Collection 1' do
             d = create_driver(%Q(
-                hosts ["127.0.0.1"]
+                server ["127.0.0.1"]
                 sensors ["aaa"]
             ))
             #oc = Fluent::Plugin::OCInput.new
