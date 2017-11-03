@@ -13,7 +13,7 @@ Gem::Specification.new do |spec|
   spec.license       = "MIT"
 
   #spec.files         = `git ls-files`.split($/)
-  spec.files         = ["lib/fluent/plugin/in_juniper_openconfig.rb", "lib/oc_pb.rb", "lib/oc_services_pb.rb"]
+  spec.files         = ["lib/fluent/plugin/in_juniper_openconfig.rb", "lib/oc_pb.rb", "lib/oc_services_pb.rb", "lib/authentication_service_pb.rb", "lib/authentication_service_services_pb.rb"]
   spec.executables   = spec.files.grep(%r{^bin/}) { |f| File.basename(f) }
   spec.test_files    = spec.files.grep(%r{^(test|spec|features)/})
   spec.require_paths = ["lib"]
