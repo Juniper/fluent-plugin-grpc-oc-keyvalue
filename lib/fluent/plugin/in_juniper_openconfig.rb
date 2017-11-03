@@ -195,6 +195,7 @@ module Fluent
                         log.debug "sequence_number : #{data.sequence_number}"
                         time = epoc_to_sec(data.timestamp)
                         log.debug "timestamp : #{time}"
+                        log.debug JSON.parse(data.to_json)
                         log.debug "======================================================="
                         time = epoc_to_sec(data.timestamp)
 
