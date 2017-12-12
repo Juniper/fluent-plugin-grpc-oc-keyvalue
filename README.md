@@ -1,7 +1,23 @@
-OpenConfig Telemetry Input Plugin
+# OpenConfig Telemetry Input Plugin
 
-The plugin reads OpenConfig telemetry data from listed sensors. Refer to
-[openconfig.net](http://openconfig.net/) for more details.
+# fluent-plugin-grpc-oc-keyvalue
+
+## Overview
+
+This plugin is designed to parse the Juniper OC telmetry data.
+Juniper OC sensor data key/value paris sent over a gRPC session.
+Collector needs to establish a gRPC session to the device and subscribe to the sensors for which it is intrested in. Once the subscription is successful, device will stream the subscribed sensor data at a frequency specified in the subscription message.
+
+
+## Installation
+
+Download the plugin from `https://git.juniper.net/vijaygadde/fluent-plugin-grpc-oc-keyvalue`
+
+Change directory to `<path-of-download>/fluent-plugin-grpc-oc-keyvalue`
+
+Build using `gem build fluent-plugin-grpc-oc-keyvalue.gemspec`
+
+Install using `gem install fluent-plugin-grpc-oc-keyvalue-0.0.1.gem`
 
 ### Configuration:
 
