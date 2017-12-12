@@ -1,5 +1,3 @@
-# OpenConfig Telemetry Input Plugin
-
 # fluent-plugin-grpc-oc-keyvalue
 
 ## Overview
