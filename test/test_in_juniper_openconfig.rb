@@ -1,12 +1,21 @@
 # test/plugin/test_in_your_own.rb
 
+require 'simplecov'
+SimpleCov.start do
+    add_filter %r{lib/.*pb}
+end
+
 require 'test/unit'
 require 'mocha/test_unit'
 #require 'fluent/test/driver/input'
 require 'fluent/test'
+require 'grpc'
 
 # your own plugin
 require 'fluent/plugin/in_juniper_openconfig'
+require 'authentication_service_pb.rb'
+require 'oc_services_pb'
+require 'oc_pb.rb'
 
 class OCInputTest < Test::Unit::TestCase
     def setup
@@ -109,14 +118,12 @@ class OCInputTest < Test::Unit::TestCase
         assert_equal tr_record, oc.transform_record(record, 'rtr1')
     end
 
-    #def test_start_collection
     sub_test_case 'Start Collection' do
         test 'Start Collection 1' do
             d = create_driver(%Q(
                 server ["127.0.0.1"]
                 sensors ["aaa"]
             ))
-            #oc = Fluent::Plugin::OCInput.new
             oc = Fluent::OCInput.new
             
             ENV['MOCHA_COUNT'] = '1'
@@ -128,31 +135,7 @@ class OCInputTest < Test::Unit::TestCase
             res.stubs(:path).returns('path')
             res.stubs(:sequence_number).returns('sequence_number')
             res.stubs(:timestamp).returns('timestamp')
-            #resp[0].stubs(:kv).returns('')
             json = {"key"=>"__timestamp__", "strValue"=>"1497431542576"}
-            #{"key"=>"__junos_re_stream_creation_timestamp__", "uintValue"=>1497431542015},
-            #{"key"=>"__junos_re_payload_get_timestamp__", "uintValue"=>1497431542575},
-            #{"key"=>"__prefix__", "strValue"=>"/components/component[name='Routing Engine1']/"},
-            #{"key"=>"properties/property[name='mastership-priority']/name", "strValue"=>"mastership-priority"},
-            #{"key"=>"properties/property[name='mastership-priority']/state/value", "strValue"=>"Backup (default)"},
-            #{"key"=>"properties/property[name='temperature']/name", "strValue"=>"temperature"},
-            #{"key"=>"properties/property[name='temperature']/state/value", "strValue"=>"33"},
-            #{"key"=>"properties/property[name='temperature-cpu']/name", "strValue"=>"temperature-cpu"},
-            #{"key"=>"properties/property[name='temperature-cpu']/state/value", "strValue"=>"32"},
-            #{"key"=>"properties/property[name='cpu-utilization-user']/name", "strValue"=>"cpu-utilization-user"},
-            #{"key"=>"properties/property[name='cpu-utilization-user']/state/value", "strValue"=>"0"},
-            #{"key"=>"properties/property[name='cpu-utilization-background']/name", "strValue"=>"cpu-utilization-background"},
-            #{"key"=>"properties/property[name='cpu-utilization-background']/state/value", "strValue"=>"0"},
-            #{"key"=>"properties/property[name='cpu-utilization-kernel']/name", "strValue"=>"cpu-utilization-kernel"},
-            #{"key"=>"properties/property[name='cpu-utilization-kernel']/state/value", "strValue"=>"0"},
-            #{"key"=>"properties/property[name='cpu-utilization-interrupt']/name", "strValue"=>"cpu-utilization-interrupt"},
-            #{"key"=>"properties/property[name='cpu-utilization-interrupt']/state/value", "strValue"=>"0"},
-            #{"key"=>"properties/property[name='cpu-utilization-idle']/name", "strValue"=>"cpu-utilization-idle"},
-            #{"key"=>"properties/property[name='cpu-utilization-idle']/state/value", "strValue"=>"99"},
-            #{"key"=>"properties/property[name='memory-dram-used']/name", "strValue"=>"memory-dram-used"},
-            #{"key"=>"properties/property[name='memory-dram-used']/state/value", "strValue"=>"3313"},
-            #{"key"=>"properties/property[name='memory-dram-installed']/name", "strValue"=>"memory-dram-installed"},
-            #{"key"=>"properties/property[name='memory-dram-installed']/state/value", "strValue"=>"8192"}]
             kv = []
             t_kv = mock()
             t_kv.stubs(:key).returns('__prefix__')
@@ -164,39 +147,99 @@ class OCInputTest < Test::Unit::TestCase
             res.stubs(:kv).returns(kv)
             resp = [res]
             JSON.stubs(:parse).returns(json)
+            #stub, err =  Telemetry::Path::Stub.new('/interfaces/', 5000)
+            #Telemetry::Stub.any_instance.stubs(:Path)
+
             stub, err = Telemetry::OpenConfigTelemetry::Stub.new('127.0.0.1:32767', :this_channel_is_insecure)
             Telemetry::OpenConfigTelemetry::Stub.any_instance.stubs(:telemetry_subscribe).returns(resp)
             #d.run(expect_emits: 1, timeout: 10)
             d.run
-            #assert_equal "", oc.start_collection(stub, 'rtr1', 32767, '/interfaces/', 'tag1')
+            #assert_equal "", oc.start_collection(stub, 'rtr1', 32767, '/interfaces/', 'sensor1', 'tag1' '5000', oc)
         end
     end
 
-#    sub_test_case 'plugin will emit some events' do
-#        test 'test expects plugin emits events 4 times' do
-#            d = create_driver(%Q(
-#                hosts ["127.0.0.1"]
-#                sensors ["aaa"]
-#            ))
-#            
-#            time = 1496998418
-#            data = [
-#                {tag: "tag1", message: {"t" => time, "v" => {"a"=>1}}},
-#                {tag: "tag2", message: {"t" => time, "v" => {"a"=>1}}},
-#                {tag: "tag3", message: {"t" => time, "v" => {"a"=>32}}},
-#            ]
-#            puts data
-#            d.run(expect_emits: 3, timeout: 1) do
-#                puts data
-#                data.each do |record|
-#                end
-#            end
-            # this method blocks until input plugin emits events 4 times
-            # or 10 seconds passes
+    sub_test_case 'Authentication' do
+        test 'Password based' do
+            d = create_driver(%Q(
+                server ["127.0.0.1"]
+                sensors ["aaa"]
+                username "user123"
+                password "pass123"
+            ))
+            oc = Fluent::OCInput.new
             
-            #events = d.events # array of [tag, time, record]
-            #assert_equal "expected_tag", events[0][0]
-#        end
-#    end
+            ENV['MOCHA_COUNT'] = '1'
+            res = mock()
+            res.stubs(:system_id).returns('')
+            res.stubs(:component_id).returns('component_id')
+            res.stubs(:sub_component_id).returns('sub_component_id')
+            res.stubs(:path).returns('path')
+            res.stubs(:sequence_number).returns('sequence_number')
+            res.stubs(:timestamp).returns('timestamp')
+            json = {"key"=>"__timestamp__", "strValue"=>"1497431542576"}
+            kv = []
+            t_kv = mock()
+            t_kv.stubs(:key).returns('__prefix__')
+            t_kv.stubs(:value).returns("str_value")
+            kv.push(t_kv)
+            t_kv.stubs(:key).returns("properties/property[name='memory-dram-installed']/state/value")
+            t_kv.stubs(:value).returns("str_value")
+            kv.push(t_kv)
+            res.stubs(:kv).returns(kv)
+            resp = [res]
+            JSON.stubs(:parse).returns(json)
+            
+            login_resp = mock()
+            login_resp.stubs(:result).returns('True')
+            login_check = mock()
+            login_check.stubs(:login_check).returns(login_resp)
 
+            GRPC::Core::Channel.stubs(:new).returns('')
+            Authentication::Login::Stub.stubs(:new).returns(login_check)
+            Authentication::LoginRequest.stubs(:new).returns('')
+
+            Telemetry::OpenConfigTelemetry::Stub.stubs(:new).returns('Test')
+            stub, err = Telemetry::OpenConfigTelemetry::Stub.new('127.0.0.1:32767', :this_channel_is_insecure)
+            Telemetry::OpenConfigTelemetry::Stub.any_instance.stubs(:telemetry_subscribe).returns(resp)
+            d.run
+            #assert_equal "", oc.start_collection(stub, 'rtr1', 32767, '/interfaces/', 'sensor1', 'tag1' '5000', oc)
+        end
+        test 'SSL based' do
+            d = create_driver(%Q(
+                server ["127.0.0.1"]
+                sensors ["aaa"]
+                certFile '/tmp/1'
+            ))
+            oc = Fluent::OCInput.new
+            
+            ENV['MOCHA_COUNT'] = '1'
+            res = mock()
+            res.stubs(:system_id).returns('')
+            res.stubs(:component_id).returns('component_id')
+            res.stubs(:sub_component_id).returns('sub_component_id')
+            res.stubs(:path).returns('path')
+            res.stubs(:sequence_number).returns('sequence_number')
+            res.stubs(:timestamp).returns('timestamp')
+            json = {"key"=>"__timestamp__", "strValue"=>"1497431542576"}
+            kv = []
+            t_kv = mock()
+            t_kv.stubs(:key).returns('__prefix__')
+            t_kv.stubs(:value).returns("str_value")
+            kv.push(t_kv)
+            t_kv.stubs(:key).returns("properties/property[name='memory-dram-installed']/state/value")
+            t_kv.stubs(:value).returns("str_value")
+            kv.push(t_kv)
+            res.stubs(:kv).returns(kv)
+            resp = [res]
+            JSON.stubs(:parse).returns(json)
+            
+            GRPC::Core::ChannelCredentials.stubs(:new).returns('cert')
+            File.stubs(:read).returns('Cert')
+            Telemetry::OpenConfigTelemetry::Stub.stubs(:new).returns('Test')
+            stub, err = Telemetry::OpenConfigTelemetry::Stub.new('127.0.0.1:32767', :this_channel_is_insecure)
+            Telemetry::OpenConfigTelemetry::Stub.any_instance.stubs(:telemetry_subscribe).returns(resp)
+            d.run
+            #assert_equal "", oc.start_collection(stub, 'rtr1', 32767, '/interfaces/', 'sensor1', 'tag1' '5000', oc)
+        end
+    end
 end
