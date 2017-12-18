@@ -3,8 +3,12 @@
 ## Overview
 
 This plugin is designed to parse the Juniper OC telmetry data.
-Juniper OC sensor data key/value paris sent over a gRPC session.
+Juniper OC sensor data are sent as key/value paris over a gRPC session.
 Collector needs to establish a gRPC session to the device and subscribe to the sensors for which it is intrested in. Once the subscription is successful, device will stream the subscribed sensor data at a frequency specified in the subscription message.
+
+Below are few points that are considered
+Markup : * One gRPC session is maintained per router per pipeline
+         * Retry mechanism in case the gRPC session is not established or terminated until the session is established or configurations are changed
 
 
 ## Installation
