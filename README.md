@@ -42,6 +42,35 @@ Install using `gem install fluent-plugin-grpc-oc-keyvalue-0.0.1.gem`
 </source>
 ```
 
+* Configuration with one device and one sensor
+In below configuration sample frequency is set to 5000ms and the data is stored in 'junoper.oc./interfaces/' table.
+Authentication used here is SSL based
+```toml
+<source>
+    @type juniper_openconfig
+    tag juniper.oc
+    server ["device-a:12345"]
+    sensors ["/interfaces/"]
+    certFile "/tmp/cert.pem"
+    @log_level debug
+</source>
+```
+
+* Configuration with one device and multiple sensors
+With below configuration data from '/interfaces/' sensor is stored in 'junoper.oc./interfaces/' table and data from '/components/' will be stored in 'junoper.oc./components/' table.
+Authentication used here is Password based
+```toml
+<source>
+    @type juniper_openconfig
+    tag juniper.oc
+    server ["device-a:12345"]
+    sensors ["/interfaces/" "/components/"]
+    certFile "/tmp/cert.pem"
+    @log_level debug
+</source>
+```
+
+
 ## TODO
 
 Pull requests are very welcome!!
