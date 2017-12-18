@@ -42,9 +42,10 @@ Install using `gem install fluent-plugin-grpc-oc-keyvalue-0.0.1.gem`
 </source>
 ```
 
-* Configuration with one device and one sensor
-In below configuration sample frequency is set to 5000ms and the data is stored in 'junoper.oc./interfaces/' table.
-Authentication used here is SSL based
+* Configuration with one device and one sensor:
+
+..* In below configuration sample frequency is set to 5000ms and the data is stored in 'junoper.oc./interfaces/' table.
+..* Authentication used here is SSL based
 ```toml
 <source>
     @type juniper_openconfig
@@ -56,9 +57,10 @@ Authentication used here is SSL based
 </source>
 ```
 
-* Configuration with one device and multiple sensors
-With below configuration data from '/interfaces/' sensor is stored in 'junoper.oc./interfaces/' table and data from '/components/' will be stored in 'junoper.oc./components/' table.
-Authentication used here is Password based
+* Configuration with one device and multiple sensors:
+
+..* With below configuration data from '/interfaces/' sensor is stored in 'junoper.oc./interfaces/' table and data from '/components/' will be stored in 'junoper.oc./components/' table.
+..* Authentication used here is Password based
 ```toml
 <source>
     @type juniper_openconfig
@@ -70,6 +72,23 @@ Authentication used here is Password based
 </source>
 ```
 
+* Configuration with multiple devices and multiple sensros with different non default ferequency:
+
+..* With below configuration, two sensors '/interfaces' and '/components/' will be subsscribed to devices device-a and device-b.
+..* gRPC connection is made on port '12345' for device 'device-a' and for device 'device-b' connection is made on port '23456'.
+..* Data from sensor '/interfaces/' from both the devices will be stored in tables 'junoper.oc./interfaces/'
+..*  Data from sensor '/components/' from both the devices will be stored in tables 'junoper.oc./components/'
+
+```toml
+<source>
+    @type juniper_openconfig
+    tag juniper.oc
+    server ["device-a:12345, "device-b:23456"]
+    sensors ["6000 /interfaces/" "7000 /components/"]
+    certFile "/tmp/cert.pem"
+    @log_level debug
+</source>
+```
 
 ## TODO
 
