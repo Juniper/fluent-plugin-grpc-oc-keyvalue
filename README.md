@@ -58,8 +58,9 @@ Install using `gem install fluent-plugin-grpc-oc-keyvalue-0.0.1.gem`
 ```
 
 * Configuration with one device and multiple sensors:
-..* With below configuration data from '/interfaces/' sensor is stored in 'junoper.oc./interfaces/' table and data from '/components/' will be stored in 'junoper.oc./components/' table.
-..* Authentication used here is Password based
+
+    - With below configuration data from '/interfaces/' sensor is stored in 'junoper.oc./interfaces/' table and data from '/components/' will be stored in 'junoper.oc./components/' table.
+    - Authentication used here is Password based
 ```toml
 <source>
     @type juniper_openconfig
