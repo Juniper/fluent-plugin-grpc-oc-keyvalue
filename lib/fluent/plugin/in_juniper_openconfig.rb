@@ -69,11 +69,14 @@ module Fluent
                         # Authenticate the Channle
                         auth_stub, err = Authentication::Login::Stub.new(host, :this_channel_is_insecure, {channel_override: channel})
                         login_req = Authentication::LoginRequest.new(user_name: @username, password: @password, client_id: Socket.gethostname)
-                        resp, _ = auth_stub.login_check(login_req)
-                        if not resp.result
-                            log.error "Password Authentication failed for #{host}. Will retry in 10 seconds"
-                            sleep(10)
-                            next
+                        while true do
+                            resp, _ = auth_stub.login_check(login_req)
+                            if not resp.result
+                                log.error "Password Authentication failed for #{host}. Will retry in 10 seconds"
+                                sleep(10)
+                                next
+                            end
+                            break
                         end
 
                         # Use the channel in OpenConfigTelemetry
