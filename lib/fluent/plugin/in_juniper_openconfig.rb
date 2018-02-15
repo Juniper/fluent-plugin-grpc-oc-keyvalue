@@ -196,11 +196,12 @@ module Fluent
                         log.debug "sub_component_id : #{data.sub_component_id}"
                         log.debug "path : #{data.path}" 
                         log.debug "sequence_number : #{data.sequence_number}"
-                        time = epoc_to_sec(data.timestamp)
+                        emit_time = epoc_to_sec(data.timestamp)
+                        log.debug "timestamp : #{emit_time}"
+                        time = epoc_to_ms(data.timestamp)
                         log.debug "timestamp : #{time}"
                         log.debug JSON.parse(data.to_json)
                         log.debug "======================================================="
-                        time = epoc_to_sec(data.timestamp)
 
                         record = {}
                         prefix = ""
@@ -208,17 +209,14 @@ module Fluent
                             value = JSON.parse(kv.to_json)[value_map[kv.value]]
                             if kv.key == "__prefix__" and value != ""
                                 prefix = value
-                                next
-                            elsif kv.key.start_with?('__')
-                                next
                             end
                             record[prefix + kv.key] = value
                         end
-                        record = transform_record(record, host)
+                        record = transform_record(record, host, time)
                         
                         record.each do |key, value|
                             log.debug "Emitting #{value}"
-                            router.emit(tag, time, value)
+                            router.emit(tag, emit_time, value)
                         end
                     end
                     if count != nil
@@ -247,8 +245,21 @@ module Fluent
 
             return epoc
         end
+
+        def epoc_to_ms(epoc)
+            nbr_digit = epoc.to_s.size
+            if nbr_digit == 13
+                return epoc.to_i
+            elsif nbr_digit == 10
+                return (epoc.to_i * 1000).to_i
+            elsif nbr_digit == 16
+                return (epoc.to_i/1000).to_i
+            elsif nbr_digit == 19
+                return (epoc.to_i/1000000).to_i
+            end
+        end     
         
-        def transform_record(record, device)
+        def transform_record(record, device, time)
             # Transforms the input record to a new hash which can be used with 
             # flunetd's InfluxDB output plugin
             
@@ -288,6 +299,7 @@ module Fluent
                 tr_record[sp_key][new_key] = value
                 tr_record[sp_key]['device'] = device
                 tr_record[sp_key]['host'] = host
+                tr_record[sp_key]['time'] = time
                 count += 1
             end
             

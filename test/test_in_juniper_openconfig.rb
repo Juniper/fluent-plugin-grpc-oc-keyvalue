@@ -86,7 +86,8 @@ class OCInputTest < Test::Unit::TestCase
         tr_record["sp_key"]["device"] = "rtr1" 
         tr_record["sp_key"]["host"] = "TestHost"
         tr_record["sp_key"]["key1"] = "value1"
-        assert_equal tr_record, oc.transform_record(record, 'rtr1')
+        #tr_record["sp_key"]["time"] = 1496998418000
+        assert_equal tr_record, oc.transform_record(record, 'rtr1', 1496998418000)
 
         # With a single subkey sub keys
         record = {}
@@ -100,7 +101,8 @@ class OCInputTest < Test::Unit::TestCase
         tr_record[sp_key]["key1/leaf2"] = "value2"
         tr_record[sp_key]["device"] = "rtr1"
         tr_record[sp_key]["host"] = "TestHost"
-        assert_equal tr_record, oc.transform_record(record, 'rtr1')
+        tr_record[sp_key]["time"] = 1496998418000
+        assert_equal tr_record, oc.transform_record(record, 'rtr1', 1496998418000)
 
         # with multiple subkeys
         record = {}
@@ -115,7 +117,8 @@ class OCInputTest < Test::Unit::TestCase
         tr_record[sp_key]["key1/key2/leaf2"] = "value2"
         tr_record[sp_key]["device"] = "rtr1"
         tr_record[sp_key]["host"] = "TestHost"
-        assert_equal tr_record, oc.transform_record(record, 'rtr1')
+        tr_record[sp_key]["time"] = 1496998418000
+        assert_equal tr_record, oc.transform_record(record, 'rtr1', 1496998418000)
     end
 
     sub_test_case 'Start Collection' do
