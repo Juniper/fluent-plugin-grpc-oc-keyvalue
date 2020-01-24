@@ -3,21 +3,20 @@
 #
 
 
-#require 'fluent/plugin/input'
+require 'fluent/plugin/input'
 require 'grpc'
-#require 'multi_json'
 require 'oc_services_pb'
 require 'authentication_service_services_pb'
 require 'json'
 require 'socket'
 
-module Fluent
+module Fluent::Plugin
     class OCInput < Input
         # Register Plugin
         Fluent::Plugin.register_input('juniper_openconfig', self)
 
-        config_param :server, :array_param, :array, value_type: :string
-        config_param :sensors, :array_param, :array, value_type: :string
+        config_param :server, :array, default: [], value_type: :string
+        config_param :sensors, :array, default: [], value_type: :string
         config_param :tag, :string, default: ''
         config_param :certFile, :string, default: ''
         config_param :username, :string, default: nil
