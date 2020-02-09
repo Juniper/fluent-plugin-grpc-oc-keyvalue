@@ -99,7 +99,7 @@ module Fluent::Plugin
                 begin
                     @sensors.each do |sensor|
                         frequency = @sampleFrequency
-                        sensor_split = sensor.split(' ')
+                        sensor_split = sensor.split(/\s(?=(?:[^'"]|["'][^'"]*['"])*$)/)
 
                         # If only one sensor is defined with no measurement name and sample frequency
                         measurement_name = sensor_split[0]
