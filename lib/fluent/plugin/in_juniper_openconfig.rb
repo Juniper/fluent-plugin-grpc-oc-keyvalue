@@ -229,7 +229,7 @@ module Fluent::Plugin
                     log.error e.message
                     log.error e.backtrace.inspect
                     sleep(10)
-                    next
+                    return
                 end
             end
         end
