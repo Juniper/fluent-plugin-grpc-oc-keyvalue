@@ -302,6 +302,9 @@ module Fluent::Plugin
                 end
                 if not tr_record.key?(sp_key)
                     tr_record[sp_key] = {}
+                    tr_record[sp_key]['device'] = device
+                    tr_record[sp_key]['host'] = host
+                    tr_record[sp_key]['time'] = time
                 end
                 words_arr = new_key.split(/\//)
                 splits.each_with_index do |split, index|
@@ -310,11 +313,6 @@ module Fluent::Plugin
                 h = words_arr.reverse.inject(value) { |a, n| { n => a } }
                 tr_record[sp_key] = merge_recursively(tr_record[sp_key], h)
             end
-             
-            tr_record['device'] = device
-            tr_record['host'] = host
-            tr_record['time'] = time
-            log.debug JSON.pretty_generate(tr_record)
             return tr_record 
         end
         
