@@ -268,7 +268,7 @@ module Fluent::Plugin
             when 'tsdb'
                 tr_record = transform_record_tsdb(record, device, time)
             when 'json'
-                tr_record['data'] = transform_record_json(record, device, time)
+                tr_record = transform_record_json(record, device, time)
             end
             return tr_record
         end
@@ -293,25 +293,26 @@ module Fluent::Plugin
                     next
                 end
                 new_key = master_key.dup
+                sp_key = splits.join(',')
                 new_key[0] = ''
                 splits.each_with_index do |split, index|
                     new_key[split] = "/MY-NEW-STRING" + index.to_s
                     sub_key, sub_value = split.match(/^\s*\[\s*'*"*(.*?)"*'*\s*=\s*'*"*(.*?)"*'*\s*\]\s*$/).captures
                     splits[index] = sub_value
                 end
+                if not tr_record.key?(sp_key)
+                    tr_record[sp_key] = {}
+                    tr_record[sp_key]['device'] = device
+                    tr_record[sp_key]['host'] = host
+                    tr_record[sp_key]['time'] = time
+                end
                 words_arr = new_key.split(/\//)
                 splits.each_with_index do |split, index|
                     words_arr = words_arr.map { |x| x == "MY-NEW-STRING" + index.to_s ? split : x }
                 end
                 h = words_arr.reverse.inject(value) { |a, n| { n => a } }
-                tr_record = merge_recursively(tr_record, h)
+                tr_record[sp_key] = merge_recursively(tr_record[sp_key], h)
             end
-             
-            tr_record['device'] = device
-            tr_record['host'] = host
-            tr_record['time'] = time
-            puts JSON.pretty_generate(tr_record)
-            log.debug JSON.pretty_generate(tr_record)
             return tr_record 
         end
         
