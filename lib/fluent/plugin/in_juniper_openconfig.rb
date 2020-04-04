@@ -3,26 +3,26 @@
 #
 
 
-#require 'fluent/plugin/input'
+require 'fluent/plugin/input'
 require 'grpc'
-#require 'multi_json'
 require 'oc_services_pb'
 require 'authentication_service_services_pb'
 require 'json'
 require 'socket'
 
-module Fluent
+module Fluent::Plugin
     class OCInput < Input
         # Register Plugin
         Fluent::Plugin.register_input('juniper_openconfig', self)
 
-        config_param :server, :array_param, :array, value_type: :string
-        config_param :sensors, :array_param, :array, value_type: :string
+        config_param :server, :array, default: [], value_type: :string
+        config_param :sensors, :array, default: [], value_type: :string
         config_param :tag, :string, default: ''
         config_param :certFile, :string, default: ''
         config_param :username, :string, default: nil
         config_param :password, :string, default: ''
         config_param :sampleFrequency, :integer, default: 1000
+        config_param :format, :string, default: "tsdb"
 
         def configure(conf)
             super
@@ -34,6 +34,9 @@ module Fluent
             # Check if atleast one sensor is provided
             if @sensors.length == 0
                 raise Fluent::ConfigError, "Atleast one sensor needs to be provided"
+            end
+            if not ["tsdb", "json"].include? @format
+                raise Fluent::ConfigError, "Invalid format configured. Should be one of tsdb/json"
             end
             if not @tag == ''
                 @tag = @tag + '.'
@@ -96,7 +99,7 @@ module Fluent
                 begin
                     @sensors.each do |sensor|
                         frequency = @sampleFrequency
-                        sensor_split = sensor.split(' ')
+                        sensor_split = sensor.split(/\s(?=(?:[^'"]|["'][^'"]*['"])*$)/)
 
                         # If only one sensor is defined with no measurement name and sample frequency
                         measurement_name = sensor_split[0]
@@ -212,10 +215,10 @@ module Fluent
                             end
                             record[prefix + kv.key] = value
                         end
-                        record = transform_record(record, host, time)
+                        record = transform_record(record, host, time, @format)
                         
                         record.each do |key, value|
-                            log.debug "Emitting #{value}"
+                            log.debug "Emitting #{key} : #{value}"
                             router.emit(tag, emit_time, value)
                         end
                     end
@@ -226,7 +229,7 @@ module Fluent
                     log.error e.message
                     log.error e.backtrace.inspect
                     sleep(10)
-                    next
+                    return
                 end
             end
         end
@@ -257,9 +260,63 @@ module Fluent
             elsif nbr_digit == 19
                 return (epoc.to_i/1000000).to_i
             end
-        end     
+        end
         
-        def transform_record(record, device, time)
+        def transform_record(record, device, time, format)
+            tr_record = {}
+            case format
+            when 'tsdb'
+                tr_record = transform_record_tsdb(record, device, time)
+            when 'json'
+                tr_record = transform_record_json(record, device, time)
+            end
+            return tr_record
+        end
+
+        def merge_recursively(a, b)
+            if a.is_a?(Hash)
+                return a.merge(b) {|key, a_item, b_item| merge_recursively(a_item, b_item) }
+            end
+            return a
+        end
+
+        def transform_record_json(record, device, time)
+            # Transforms the input record to a new hash which can be used as json
+            tr_record = {}
+            count = 0
+            host = Socket.gethostname
+            
+            record.each do |master_key, value|
+                # Get all the patterns in the key which indicates tags such as [name=ge/0/0/0]
+                splits = master_key.scan(/\s*\[[^\]]*\]\s*/)
+                if splits.length == 0
+                    next
+                end
+                new_key = master_key.dup
+                sp_key = splits.join(',')
+                new_key[0] = ''
+                splits.each_with_index do |split, index|
+                    new_key[split] = "/MY-NEW-STRING" + index.to_s
+                    sub_key, sub_value = split.match(/^\s*\[\s*'*"*(.*?)"*'*\s*=\s*'*"*(.*?)"*'*\s*\]\s*$/).captures
+                    splits[index] = sub_value
+                end
+                if not tr_record.key?(sp_key)
+                    tr_record[sp_key] = {}
+                    tr_record[sp_key]['device'] = device
+                    tr_record[sp_key]['host'] = host
+                    tr_record[sp_key]['time'] = time
+                end
+                words_arr = new_key.split(/\//)
+                splits.each_with_index do |split, index|
+                    words_arr = words_arr.map { |x| x == "MY-NEW-STRING" + index.to_s ? split : x }
+                end
+                h = words_arr.reverse.inject(value) { |a, n| { n => a } }
+                tr_record[sp_key] = merge_recursively(tr_record[sp_key], h)
+            end
+            return tr_record 
+        end
+        
+        def transform_record_tsdb(record, device, time)
             # Transforms the input record to a new hash which can be used with 
             # flunetd's InfluxDB output plugin
             
