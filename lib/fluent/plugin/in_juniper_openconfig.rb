@@ -21,7 +21,7 @@ module Fluent::Plugin
         config_param :certFile, :string, default: ''
         config_param :username, :string, default: nil
         config_param :password, :string, default: ''
-        config_param :sampleFrequency, :integer, default: 1000
+        config_param :sampleFrequency, :integer, default: 2000
         config_param :format, :string, default: "tsdb"
 
         def configure(conf)
@@ -89,21 +89,21 @@ module Fluent::Plugin
                         stub = Telemetry::OpenConfigTelemetry::Stub.new(host, :this_channel_is_insecure)
                     end
                 rescue Exception => e
-                    log.error e.message
+                    log.error "Error message: #{e.message}, Host: #{host}"
                     sleep(10)
                     next
                 end
 
-                threads = []
+                # threads = []
                 host_name, host_port = host.split(':')
+                sensor_to_measurement = Hash.new
+                sensor_to_measurement["no_path"] = "no_path"
+                path_list = Array.new
                 begin
                     @sensors.each do |sensor|
                         frequency = @sampleFrequency
                         sensor_split = sensor.split(/\s(?=(?:[^'"]|["'][^'"]*['"])*$)/)
-
-                        # If only one sensor is defined with no measurement name and sample frequency
-                        measurement_name = sensor_split[0]
-                        
+                    
                         # If there are multiple atrributes in the sensor
                         if sensor_split.length > 1
                             measurement_name = nil
@@ -118,35 +118,45 @@ module Fluent::Plugin
                                 measurement_name = sensor_split[0]
                                 sensor_split = sensor_split[1, sensor_split.length]
                             end
-                        end
-                        sensor_split.each do |sensor_name|
-                            if measurement_name == nil
-                                threads.push(Thread.new{start_collection(stub, host_name, host_port, sensor_name, sensor_name, @tag, frequency)})
-                            else
-                                threads.push(Thread.new{start_collection(stub, host_name, host_port, measurement_name, sensor_name, @tag, frequency)})
+                            sensor_split.each do |sub_sensor|
+                                sub_sesnor_full = compute_subscription_path(sub_sensor)
+                                if measurement_name == nil
+                                    sensor_to_measurement[sub_sesnor_full] = sub_sesnor_full
+                                else
+                                    sensor_to_measurement[sub_sesnor_full] = measurement_name
+                                end
+                                path_list << Telemetry::Path.new(path: sub_sesnor_full, sample_frequency: frequency)
                             end
+                        else
+                            # If only one sensor is defined with no measurement name and sample frequency
+                            sub_sesnor_full = compute_subscription_path(sensor_split[0])
+                            sensor_to_measurement[sub_sesnor_full] = sub_sesnor_full
+                            path_list << Telemetry::Path.new(path: sub_sesnor_full, sample_frequency: frequency)
                         end
                     end
-                    threads.each do |thread|
-                        thread.join
-                    end
+                    start_collections(stub, host_name, host_port, sensor_to_measurement, path_list, @tag)
                 rescue Exception => e
-                    log.error e.message
+                    log.error "Error message: #{e.message}, Host: #{host}"
                     sleep(10)
                     next
                 end
             end            
         end
-        
-        def start_collection(stub, host, port, measurement_name, sensor, tag, frequency)
-            tag = tag + measurement_name
+
+        def compute_subscription_path(path)
+            if path.end_with?('/')
+                return path
+            end
+            return path + '/'
+        end
+
+        def start_collections(stub, host, port, sensor_to_measurement, path_list, tag)
             req = ''
             resp = ''
             count = ENV['MOCHA_COUNT']
             if count != nil
                 count = count.to_i
             end
-
             loop do
                 if count != nil
                     if count <= 0
@@ -155,15 +165,13 @@ module Fluent::Plugin
                 end
                 begin
                     # Create a stub to connect to the device
-                    log.debug "Subsribing to #{sensor} with host #{host} on port #{port}"
-                
-                    # Create a Path (Sensor) list that needs to be subscribed
-                    path_list = [Telemetry::Path.new(path: sensor, sample_frequency: frequency)]
+                    log.debug "Subsribing to #{path_list} with host #{host} on port #{port}"
+
                     # Create Subscription request
                     begin
                         req = Telemetry::SubscriptionRequest.new(path_list: path_list)
                     rescue Exception => e
-                        log.error e.message
+                        log.error "Error message: #{e.message}, Host: #{host}"
                         log.error e.backtrace.inspect
                         sleep(10)
                         next
@@ -171,16 +179,14 @@ module Fluent::Plugin
                     # Subscribe using the subscription request
                     resp = ''
                     begin
-                        log.debug "Sending subscription request for #{sensor} to host #{host} on port #{port}"
-                        log.debug "Data from this subscription will be stored in #{tag}"
+                        log.debug "Sending subscription request for #{path_list} to host #{host} on port #{port}"
                         resp = stub.telemetry_subscribe(req)
                     rescue Exception => e
-                        log.error e.message
+                        log.error "Error message: #{e.message}, Host: #{host}"
                         log.error e.backtrace.inspect
                         sleep(10)
                         next
                     end
-                    log.debug "Subscription done"
                     value_map = {
                         'uint_value': 'uintValue', 
                         'double_value': 'doubleValue', 
@@ -190,7 +196,7 @@ module Fluent::Plugin
                         'str_value': 'strValue', 
                         'bytes_value': 'bytesValue'
                     }
-                    
+
                     # Start listening to the stream
                     resp.each do |data|
                         log.debug "======================================================="
@@ -205,6 +211,11 @@ module Fluent::Plugin
                         log.debug "timestamp : #{time}"
                         log.debug JSON.parse(data.to_json)
                         log.debug "======================================================="
+                        subscribed_path = "no_path"
+                        data_path_split = data.path.split(':')
+                         if data_path_split.length == 4
+                             subscribed_path = data_path_split[2]
+                         end
 
                         record = {}
                         prefix = ""
@@ -216,24 +227,27 @@ module Fluent::Plugin
                             record[prefix + kv.key] = value
                         end
                         record = transform_record(record, host, time, @format)
+                        record_tag = tag + sensor_to_measurement[subscribed_path]
                         
                         record.each do |key, value|
-                            log.debug "Emitting #{key} : #{value}"
-                            router.emit(tag, emit_time, value)
+                            router.emit(record_tag, emit_time, value)
                         end
                     end
                     if count != nil
                         count -= 1
                     end
                 rescue Exception => e
-                    log.error e.message
+                    log.error "Error message: #{e.message}, Host: #{host}"
                     log.error e.backtrace.inspect
                     sleep(10)
+                    if e.message.include?("Authorization failed")
+                        next
+                    end
                     return
                 end
             end
         end
-
+        
         def epoc_to_sec(epoc) 
             # Check if sec, usec or msec
             nbr_digit = epoc.to_s.size
