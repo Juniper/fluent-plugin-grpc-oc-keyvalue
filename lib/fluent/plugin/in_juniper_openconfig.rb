@@ -304,6 +304,13 @@ module Fluent::Plugin
                 # Get all the patterns in the key which indicates tags such as [name=ge/0/0/0]
                 splits = master_key.scan(/\s*\[[^\]]*\]\s*/)
                 if splits.length == 0
+                    if not tr_record.key?('sp_key')
+                        tr_record['sp_key'] = {}
+                        tr_record['sp_key']['device'] = device
+                        tr_record['sp_key']['host'] = host
+                    end
+                    tr_record['sp_key'][master_key] = value
+                    count += 1
                     next
                 end
                 new_key = master_key.dup
